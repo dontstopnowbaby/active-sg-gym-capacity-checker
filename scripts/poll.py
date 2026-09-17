@@ -162,7 +162,9 @@ def main() -> int:
                 last_error=f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} — {reason}",
             )
         )
-        return 1
+        # The fallback files are valid output. Return success so the workflow
+        # can commit the updated dashboard and its visible error message.
+        return 0
 
     row = {
         "timestamp": now.isoformat(timespec="seconds"),
