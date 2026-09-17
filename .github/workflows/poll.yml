@@ -22,6 +22,7 @@ jobs:
           python-version: "3.x"
 
       - name: Poll capacity
+        continue-on-error: true
         run: python scripts/poll.py
 
       - name: Commit generated data
