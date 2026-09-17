@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hougang ActiveSG Gym — Capacity Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #171a21;
+    --text: #e6e8eb;
+    --muted: #8b93a1;
+    --accent: #4ade80;
+    --accent-warn: #f87171;
+    --border: #262a33;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f6f8;
+      --card: #ffffff;
+      --text: #1a1d23;
+      --muted: #5b6472;
+      --border: #e2e5ea;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 1rem; margin: 0 0 12px; }
+  .quiet-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .quiet-list li {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(74, 222, 128, 0.08);
+    border-radius: 8px;
+    font-size: 0.95rem;
+  }
+  .quiet-list li .pct { color: var(--accent); font-weight: 600; }
+  .chart-box { position: relative; height: 260px; }
+  .empty {
+    color: var(--muted);
+    font-size: 0.9rem;
+    padding: 20px 0;
+    text-align: center;
+  }
+  footer { color: var(--muted); font-size: 0.8rem; text-align: center; margin-top: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Hougang ActiveSG Gym</h1>
+  <div class="sub" id="subtitle">Loading…</div>
+
+  <div class="card">
+    <h2>Quietest hours (lowest average capacity)</h2>
+    <ul class="quiet-list" id="quiet-list"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Average capacity by hour of day (SGT)</h2>
+    <div class="chart-box"><canvas id="hourly-chart"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h2>Recent readings</h2>
+    <div class="chart-box"><canvas id="recent-chart"></canvas></div>
+  </div>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>
+async function loadDashboard() {
+  let data;
+  try {
+    const res = await fetch('data.json', { cache: 'no-store' });
+    data = await res.json();
+  } catch (e) {
+    document.getElementById('subtitle').textContent =
+      'No data yet — the first Action run will populate this page.';
+    return;
+  }
+
+  document.getElementById('subtitle').textContent =
+    `Last updated: ${new Date(data.generated_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} (SGT)`;
+  document.getElementById('footer').textContent =
+    `Unofficial data pulled hourly from activesg.gov.sg — for personal planning only.`;
+
+  const quietList = document.getElementById('quiet-list');
+  if (!data.quietest_hours || data.quietest_hours.length === 0) {
+    quietList.innerHTML = '<li class="empty" style="background:none;">No data yet.</li>';
+  } else {
+    quietList.innerHTML = data.quietest_hours.map(h =>
+      `<li><span>${h.hour}</span><span class="pct">${h.avg_capacity}% avg (${h.samples} samples)</span></li>`
+    ).join('');
+  }
+
+  if (data.hourly_average && data.hourly_average.length > 0) {
+    const labels = data.hourly_average.map(h => h.hour);
+    const values = data.hourly_average.map(h => h.avg_capacity);
+    const minVal = Math.min(...values);
+    const colors = values.map(v => v <= minVal + 5 ? '#4ade80' : 'rgba(139,147,161,0.5)');
+
+    new Chart(document.getElementById('hourly-chart'), {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Avg capacity %', data: values, backgroundColor: colors, borderRadius: 4 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { color: '#8b93a1' } }, x: { ticks: { color: '#8b93a1' } } }
+      }
+    });
+  }
+
+  if (data.recent_readings && data.recent_readings.length > 0) {
+    const points = data.recent_readings.filter(r => String(r.is_closed).toLowerCase() !== 'true');
+    new Chart(document.getElementById('recent-chart'), {
+      type: 'line',
+      data: {
+        labels: points.map(r => r.timestamp.replace('T', ' ').slice(5, 16)),
+        datasets: [{
+          label: 'Capacity %',
+          data: points.map(r => Number(r.capacity_percentage)),
+          borderColor: '#4ade80',
+          backgroundColor: 'rgba(74,222,128,0.15)',
+          tension: 0.25,
+          pointRadius: 0,
+          fill: true,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { color: '#8b93a1' } },
+          x: { ticks: { color: '#8b93a1', maxTicksLimit: 8 } }
+        }
+      }
+    });
+  }
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
