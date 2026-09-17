@@ -28,7 +28,6 @@ from zoneinfo import ZoneInfo
 
 API_URL = (
     "https://activesg.gov.sg/api/trpc/pass.getFacilityCapacities"
-    "?input=%7B%22json%22%3Anull%2C%22meta%22%3A%7B%22values%22%3A%5B%22undefined%22%5D%7D%7D"
 )
 FACILITY_ID = "XcptrxSXxwEMzzOdhC4e8"  # Hougang ActiveSG Gym
 FACILITY_NAME = "Hougang ActiveSG Gym"
