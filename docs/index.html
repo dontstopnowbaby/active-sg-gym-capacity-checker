@@ -93,10 +93,12 @@ async function loadDashboard() {
     const res = await fetch('data.json', { cache: 'no-store' });
     data = await res.json();
   } catch (e) {
-    document.getElementById('subtitle').textContent =
-      'No data yet — the first Action run will populate this page.';
+      document.getElementById('subtitle').textContent = data.generated_at
+        ? `Last updated: ${new Date(data.generated_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} (SGT)`
+        : 'No successful poll yet — waiting on the first Action run.';
     return;
   }
+  
 
   document.getElementById('subtitle').textContent =
     `Last updated: ${new Date(data.generated_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} (SGT)`;
