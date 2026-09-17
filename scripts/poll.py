@@ -3,8 +3,12 @@
 Hougang ActiveSG Gym capacity poller (GitHub Actions edition).
 
 Fetches the current capacity from the (unofficial, reverse-engineered)
-ActiveSG tRPC endpoint, appends a row to data/capacity.csv, and rebuilds
-docs/data.json which the GitHub Pages dashboard reads.
+ActiveSG tRPC endpoint, records one reading, and rebuilds docs/data.json
+which the GitHub Pages dashboard reads.
+
+The poller is intended to be run once per hour by GitHub Actions. It keeps a
+rolling seven-day window of hourly readings, so the dashboard's averages and
+recent trend represent the current week rather than all historical data.
 
 This endpoint is undocumented and may change or start rate-limiting without
 notice -- failures are logged, not raised, so a bad run doesn't break the
@@ -16,7 +20,7 @@ import json
 import logging
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -30,14 +34,12 @@ FACILITY_ID = "XcptrxSXxwEMzzOdhC4e8"  # Hougang ActiveSG Gym
 FACILITY_NAME = "Hougang ActiveSG Gym"
 SGT = ZoneInfo("Asia/Singapore")
 TIMEOUT_SECONDS = 10
+TRACKING_DAYS = 7
 
 ROOT = Path(__file__).resolve().parent.parent
 CSV_PATH = ROOT / "data" / "capacity.csv"
 JSON_PATH = ROOT / "docs" / "data.json"
 FIELDNAMES = ["timestamp", "date", "hour", "weekday", "capacity_percentage", "is_closed"]
-
-# Keep the line-chart payload from growing forever: ~14 days of hourly points.
-MAX_RECENT_POINTS = 24 * 14
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -85,14 +87,30 @@ def load_existing_rows() -> list[dict]:
         return list(csv.DictReader(f))
 
 
-def append_row(row: dict) -> None:
+def parse_timestamp(row: dict) -> datetime | None:
+    try:
+        timestamp = datetime.fromisoformat(row["timestamp"])
+        return timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=SGT)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def keep_week(rows: list[dict], now: datetime) -> list[dict]:
+    """Keep only valid readings from the current rolling seven-day window."""
+    cutoff = now - timedelta(days=TRACKING_DAYS)
+    current_rows = [
+        row for row in rows
+        if (timestamp := parse_timestamp(row)) is not None and timestamp >= cutoff
+    ]
+    return sorted(current_rows, key=lambda row: parse_timestamp(row))
+
+
+def write_rows(rows: list[dict]) -> None:
     CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
-    write_header = not CSV_PATH.exists()
-    with open(CSV_PATH, "a", newline="") as f:
+    with open(CSV_PATH, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-        if write_header:
-            writer.writeheader()
-        writer.writerow(row)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def build_dashboard(rows: list[dict], last_error: str | None = None) -> dict:
@@ -114,11 +132,12 @@ def build_dashboard(rows: list[dict], last_error: str | None = None) -> dict:
 
     return {
         "facility_name": FACILITY_NAME,
+        "tracking_period_days": TRACKING_DAYS,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "hourly_average": hourly_average,
         "quietest_hours": quietest_hours,
-        "recent_readings": rows[-MAX_RECENT_POINTS:],
-        "last_error": last_error,   # None when the most recent poll succeeded
+        "recent_readings": rows,
+        "last_error": last_error,
     }
 
 
@@ -128,6 +147,7 @@ def write_dashboard(dashboard: dict) -> None:
 
 
 def main() -> int:
+    now = datetime.now(SGT)
     rows = load_existing_rows()
 
     try:
@@ -135,13 +155,16 @@ def main() -> int:
     except (HTTPError, URLError, KeyError, ValueError, json.JSONDecodeError) as e:
         reason = describe_error(e)
         log.error("Poll failed: %s", reason)
-        # Still rebuild the dashboard from existing data so the Pages site
-        # doesn't go stale-looking on a transient failure -- but now the
-        # reason is committed to docs/data.json and shown on the page too.
-        write_dashboard(build_dashboard(rows, last_error=f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} — {reason}"))
+        rows = keep_week(rows, now)
+        write_rows(rows)
+        write_dashboard(
+            build_dashboard(
+                rows,
+                last_error=f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} — {reason}",
+            )
+        )
         return 1
 
-    now = datetime.now(SGT)
     row = {
         "timestamp": now.isoformat(timespec="seconds"),
         "date": now.strftime("%Y-%m-%d"),
@@ -150,11 +173,17 @@ def main() -> int:
         "capacity_percentage": gym.get("capacityPercentage"),
         "is_closed": gym.get("isClosed", False),
     }
-    append_row(row)
-    rows.append(row)
-
+    rows = keep_week(rows + [row], now)
+    write_rows(rows)
     write_dashboard(build_dashboard(rows))
-    log.info("%s: %s%% at %s SGT -> logged", FACILITY_NAME, row["capacity_percentage"], row["hour"])
+    log.info(
+        "%s: %s%% at %s SGT -> logged (%d readings in rolling %d-day window)",
+        FACILITY_NAME,
+        row["capacity_percentage"],
+        row["hour"],
+        len(rows),
+        TRACKING_DAYS,
+    )
     return 0
 
 
