@@ -47,8 +47,13 @@ def fetch_capacity() -> dict:
     req = Request(
         API_URL,
         headers={
-            "accept": "*/*",
-            "user-agent": "Mozilla/5.0 (compatible; hourly-capacity-logger/1.0)",
+            "accept": "application/json, text/plain, */*",
+            "accept-language": "en-US,en;q=0.9",
+            "referer": "https://activesg.gov.sg/gym-pool-crowd",
+            "user-agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+            ),
         },
     )
     with urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
@@ -58,6 +63,19 @@ def fetch_capacity() -> dict:
         if gym["id"] == FACILITY_ID:
             return gym
     raise ValueError(f"Facility id {FACILITY_ID} not found in response")
+
+
+def describe_error(e: Exception) -> str:
+    """Turn an exception into a short, committable diagnostic string."""
+    if isinstance(e, HTTPError):
+        try:
+            body = e.read().decode("utf-8", errors="replace")[:300]
+        except Exception:
+            body = "<could not read body>"
+        return f"HTTP {e.code} {e.reason} — body: {body}"
+    if isinstance(e, URLError):
+        return f"URLError: {e.reason}"
+    return f"{type(e).__name__}: {e}"
 
 
 def load_existing_rows() -> list[dict]:
@@ -77,7 +95,7 @@ def append_row(row: dict) -> None:
         writer.writerow(row)
 
 
-def build_dashboard(rows: list[dict]) -> dict:
+def build_dashboard(rows: list[dict], last_error: str | None = None) -> dict:
     hour_stats: dict[str, list[float]] = defaultdict(list)
     for r in rows:
         if str(r.get("is_closed", "")).strip().lower() == "true":
@@ -100,6 +118,7 @@ def build_dashboard(rows: list[dict]) -> dict:
         "hourly_average": hourly_average,
         "quietest_hours": quietest_hours,
         "recent_readings": rows[-MAX_RECENT_POINTS:],
+        "last_error": last_error,   # None when the most recent poll succeeded
     }
 
 
@@ -113,15 +132,13 @@ def main() -> int:
 
     try:
         gym = fetch_capacity()
-    except (HTTPError, URLError) as e:
-        log.error("Network/API error fetching capacity: %s", e)
+    except (HTTPError, URLError, KeyError, ValueError, json.JSONDecodeError) as e:
+        reason = describe_error(e)
+        log.error("Poll failed: %s", reason)
         # Still rebuild the dashboard from existing data so the Pages site
-        # doesn't go stale-looking or break on a transient failure.
-        write_dashboard(build_dashboard(rows))
-        return 1
-    except (KeyError, ValueError, json.JSONDecodeError) as e:
-        log.error("Unexpected response shape (API may have changed): %s", e)
-        write_dashboard(build_dashboard(rows))
+        # doesn't go stale-looking on a transient failure -- but now the
+        # reason is committed to docs/data.json and shown on the page too.
+        write_dashboard(build_dashboard(rows, last_error=f"{datetime.now(timezone.utc).isoformat(timespec='seconds')} — {reason}"))
         return 1
 
     now = datetime.now(SGT)

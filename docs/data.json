@@ -3,5 +3,6 @@
   "generated_at": null,
   "hourly_average": [],
   "quietest_hours": [],
-  "recent_readings": []
+  "recent_readings": [],
+  "last_error": null
 }

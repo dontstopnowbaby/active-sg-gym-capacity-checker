@@ -68,6 +68,11 @@
   <h1>Hougang ActiveSG Gym</h1>
   <div class="sub" id="subtitle">Loading…</div>
 
+  <div class="card" id="error-card" style="display:none; border-color:#f87171;">
+    <h2 style="color:#f87171;">⚠ Last poll failed</h2>
+    <div id="error-text" style="font-family: ui-monospace, monospace; font-size: 0.85rem; color: #f87171; white-space: pre-wrap; word-break: break-word;"></div>
+  </div>
+
   <div class="card">
     <h2>Quietest hours (lowest average capacity)</h2>
     <ul class="quiet-list" id="quiet-list"></ul>
@@ -93,17 +98,21 @@ async function loadDashboard() {
     const res = await fetch('data.json', { cache: 'no-store' });
     data = await res.json();
   } catch (e) {
-      document.getElementById('subtitle').textContent = data.generated_at
-        ? `Last updated: ${new Date(data.generated_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} (SGT)`
-        : 'No successful poll yet — waiting on the first Action run.';
+    document.getElementById('subtitle').textContent =
+      'No data yet — the first Action run will populate this page.';
     return;
   }
-  
 
-  document.getElementById('subtitle').textContent =
-    `Last updated: ${new Date(data.generated_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} (SGT)`;
+  document.getElementById('subtitle').textContent = data.generated_at
+    ? `Last updated: ${new Date(data.generated_at).toLocaleString('en-SG', { timeZone: 'Asia/Singapore' })} (SGT)`
+    : 'No successful poll yet — waiting on the first Action run.';
   document.getElementById('footer').textContent =
     `Unofficial data pulled hourly from activesg.gov.sg — for personal planning only.`;
+
+  if (data.last_error) {
+    document.getElementById('error-card').style.display = 'block';
+    document.getElementById('error-text').textContent = data.last_error;
+  }
 
   const quietList = document.getElementById('quiet-list');
   if (!data.quietest_hours || data.quietest_hours.length === 0) {
