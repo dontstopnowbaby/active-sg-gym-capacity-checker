@@ -1,9 +1,9 @@
 {
   "facility_name": "Hougang ActiveSG Gym",
   "tracking_period_days": 7,
-  "generated_at": "2026-09-17T12:25:10+00:00",
+  "generated_at": "2026-09-17T17:27:23+00:00",
   "hourly_average": [],
   "quietest_hours": [],
   "recent_readings": [],
-  "last_error": "2026-09-17T12:25:10+00:00 \u2014 HTTP 403 Forbidden \u2014 body: <!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"viewport\" content=\"width=device-width,initial-scal"
+  "last_error": "2026-09-17T17:27:23+00:00 \u2014 HTTP 403 Forbidden \u2014 body: <!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"viewport\" content=\"width=device-width,initial-scal"
 }
